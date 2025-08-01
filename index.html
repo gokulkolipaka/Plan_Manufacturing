@@ -3,15 +3,692 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manufacturing Planner - Graviti Pharmaceuticals</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <title>Graviti Pharmaceuticals - Manufacturing Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+    <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/1.3.11/chrono.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.15.0/Recharts.min.js"></script>
 </head>
-<body>
+<body class="bg-gray-100">
     <div id="root"></div>
-    <script type="text/babel" src="app.js"></script>
+
+    <script type="text/babel">
+        const defaultUsers = [
+            { username: "superadmin", password: "admin123", role: "Super Admin", mustChangePassword: false },
+            { username: "admin", password: "admin123", role: "Admin", mustChangePassword: false },
+            { username: "user", password: "user123", role: "User", mustChangePassword: false }
+        ];
+
+        const initialData = [
+            { process: "Granulation 150 L", "45835": 0, "45836": 0, "45837": 0, "45838": 0, "45839": 0, "45840": 12, "45841": 0, "45842": 0, "45843": 0, "45844": 0, "45845": 0, "45846": 0, "45847": 0, "45848": 0, total: 12 },
+            { process: "Granulation 700 L", "45835": 2, "45836": 6.1, "45837": 0, "45838": 6.1, "45839": 6.1, "45840": 4.1, "45841": 6.1, "45842": 4.15, "45843": 2.05, "45844": 0, "45845": 2.55, "45846": 20.7, "45847": 16.4, "45848": 6.4, total: 82.65 },
+        ];
+
+        const App = () => {
+            const [user, setUser] = React.useState(JSON.parse(localStorage.getItem('currentUser')) || null);
+            const [users, setUsers] = React.useState(JSON.parse(localStorage.getItem('users')) || defaultUsers);
+            const [data, setData] = React.useState(JSON.parse(localStorage.getItem('manufacturingData_2025_7')) || initialData);
+            const [showSignup, setShowSignup] = React.useState(false);
+            const [showUserManagement, setShowUserManagement] = React.useState(false);
+            const [showChangePassword, setShowChangePassword] = React.useState(false);
+            const [logo, setLogo] = React.useState(localStorage.getItem('logo') || "https://via.placeholder.com/170x66");
+            const [currentMonth, setCurrentMonth] = React.useState(7);
+            const [currentYear, setCurrentYear] = React.useState(2025);
+            const [currentTime, setCurrentTime] = React.useState(new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
+            const [editingProcess, setEditingProcess] = React.useState(null);
+            const [editValue, setEditValue] = React.useState('');
+            const [mustChangePassword, setMustChangePassword] = React.useState(false);
+            const [showAddUser, setShowAddUser] = React.useState(false);
+
+            React.useEffect(() => {
+                const timer = setInterval(() => {
+                    setCurrentTime(new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
+                }, 1000);
+                return () => clearInterval(timer);
+            }, []);
+
+            React.useEffect(() => {
+                if (user && user.mustChangePassword) {
+                    setMustChangePassword(true);
+                }
+            }, [user]);
+
+            const handleLogin = (username, password) => {
+                const foundUser = users.find(u => u.username === username && u.password === password);
+                if (foundUser) {
+                    setUser(foundUser);
+                    localStorage.setItem('currentUser', JSON.stringify(foundUser));
+                    if (foundUser.mustChangePassword) {
+                        setMustChangePassword(true);
+                    } else {
+                        alert('Login successful!');
+                    }
+                } else {
+                    alert('Invalid username or password.');
+                }
+            };
+
+            const handleSignup = (username, password, confirmPassword) => {
+                if (password.length < 8) {
+                    alert('Password must be at least 8 characters long.');
+                    return;
+                }
+                if (password !== confirmPassword) {
+                    alert('Passwords do not match.');
+                    return;
+                }
+                if (users.find(u => u.username === username)) {
+                    alert('Username already exists.');
+                    return;
+                }
+                const newUser = { username, password, role: "User", mustChangePassword: false };
+                setUsers([...users, newUser]);
+                localStorage.setItem('users', JSON.stringify([...users, newUser]));
+                alert('Account created successfully!');
+                setShowSignup(false);
+            };
+
+            const handleLogout = () => {
+                setUser(null);
+                localStorage.removeItem('currentUser');
+            };
+
+            const handleRoleChange = (username, newRole) => {
+                const updatedUsers = users.map(u => u.username === username ? { ...u, role: newRole } : u);
+                setUsers(updatedUsers);
+                localStorage.setItem('users', JSON.stringify(updatedUsers));
+                if (user.username === username) {
+                    setUser({ ...user, role: newRole });
+                    localStorage.setItem('currentUser', JSON.stringify({ ...user, role: newRole }));
+                }
+                alert('Role updated successfully!');
+            };
+
+            const handleChangePassword = (oldPassword, newPassword, confirmPassword) => {
+                if (oldPassword !== user.password) {
+                    alert('Incorrect old password.');
+                    return;
+                }
+                if (newPassword.length < 8) {
+                    alert('New password must be at least 8 characters long.');
+                    return;
+                }
+                if (newPassword !== confirmPassword) {
+                    alert('New passwords do not match.');
+                    return;
+                }
+                const updatedUsers = users.map(u => u.username === user.username ? { ...u, password: newPassword, mustChangePassword: false } : u);
+                setUsers(updatedUsers);
+                localStorage.setItem('users', JSON.stringify(updatedUsers));
+                setUser({ ...user, password: newPassword, mustChangePassword: false });
+                localStorage.setItem('currentUser', JSON.stringify({ ...user, password: newPassword, mustChangePassword: false }));
+                alert('Password changed successfully!');
+                setShowChangePassword(false);
+                setMustChangePassword(false);
+            };
+
+            const handleDataEdit = (rowIndex, column, value) => {
+                const newData = [...data];
+                newData[rowIndex][column] = value;
+                if (column !== "process" && column !== "total") {
+                    const row = newData[rowIndex];
+                    row.total = Object.keys(row)
+                        .filter(key => Number.isInteger(parseInt(key)))
+                        .reduce((sum, key) => sum + (parseFloat(row[key]) || 0), 0);
+                }
+                setData(newData);
+                localStorage.setItem(`manufacturingData_${currentYear}_${currentMonth}`, JSON.stringify(newData));
+            };
+
+            const handleEditProcess = (rowIndex) => {
+                setEditingProcess(rowIndex);
+                setEditValue(data[rowIndex].process);
+            };
+
+            const handleSaveProcess = (rowIndex) => {
+                if (editValue.trim() === '') {
+                    alert('Equipment name cannot be empty.');
+                    return;
+                }
+                if (data.some((row, index) => index !== rowIndex && row.process === editValue)) {
+                    alert('Equipment name must be unique.');
+                    return;
+                }
+                const newData = [...data];
+                newData[rowIndex].process = editValue;
+                setData(newData);
+                localStorage.setItem(`manufacturingData_${currentYear}_${currentMonth}`, JSON.stringify(newData));
+                setEditingProcess(null);
+                setEditValue('');
+            };
+
+            const handleMoveUp = (rowIndex) => {
+                if (rowIndex === 0) return;
+                const newData = [...data];
+                [newData[rowIndex - 1], newData[rowIndex]] = [newData[rowIndex], newData[rowIndex - 1]];
+                setData(newData);
+                localStorage.setItem(`manufacturingData_${currentYear}_${currentMonth}`, JSON.stringify(newData));
+            };
+
+            const handleMoveDown = (rowIndex) => {
+                if (rowIndex === data.length - 1) return;
+                const newData = [...data];
+                [newData[rowIndex], newData[rowIndex + 1]] = [newData[rowIndex + 1], newData[rowIndex]];
+                setData(newData);
+                localStorage.setItem(`manufacturingData_${currentYear}_${currentMonth}`, JSON.stringify(newData));
+            };
+
+            const handleAddEquipment = (equipmentName) => {
+                if (equipmentName.trim() === '') {
+                    alert('Equipment name cannot be empty.');
+                    return;
+                }
+                if (data.some(row => row.process === equipmentName)) {
+                    alert('Equipment name must be unique.');
+                    return;
+                }
+                const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+                const startSerial = Math.floor((new Date(currentYear, currentMonth - 1, 1) - new Date(1970, 0, 1)) / (1000 * 60 * 60 * 24)) + 25569;
+                const newEquipment = { process: equipmentName, total: 0 };
+                for (let i = 0; i < daysInMonth; i++) {
+                    newEquipment[(startSerial + i).toString()] = 0;
+                }
+                const newData = [...data, newEquipment];
+                setData(newData);
+                localStorage.setItem(`manufacturingData_${currentYear}_${currentMonth}`, JSON.stringify(newData));
+                alert('Equipment added successfully!');
+            };
+
+            const handleDeleteEquipment = (rowIndex) => {
+                const newData = data.filter((_, index) => index !== rowIndex);
+                setData(newData);
+                localStorage.setItem(`manufacturingData_${currentYear}_${currentMonth}`, JSON.stringify(newData));
+            };
+
+            const handleAddUser = (username, role) => {
+                if (username.trim() === '') {
+                    alert('Username cannot be empty.');
+                    return;
+                }
+                if (users.some(u => u.username === username)) {
+                    alert('Username already exists.');
+                    return;
+                }
+                const newUser = { username, password: "password123", role, mustChangePassword: true };
+                setUsers([...users, newUser]);
+                localStorage.setItem('users', JSON.stringify([...users, newUser]));
+                alert('User added successfully! Default password: password123');
+            };
+
+            const handleDeleteUser = (username) => {
+                if (username === "superadmin") {
+                    alert('Cannot delete superadmin.');
+                    return;
+                }
+                const updatedUsers = users.filter(u => u.username !== username);
+                setUsers(updatedUsers);
+                localStorage.setItem('users', JSON.stringify(updatedUsers));
+                if (user.username === username) {
+                    handleLogout();
+                }
+            };
+
+            const handleLogoUpload = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        setLogo(e.target.result);
+                        localStorage.setItem('logo', e.target.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const formatDate = (serial) => {
+                const date = new Date((serial - 25569) * 86400 * 1000);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            };
+
+            const handleMonthChange = (month, year) => {
+                setCurrentMonth(month);
+                setCurrentYear(year);
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const startSerial = Math.floor((new Date(year, month - 1, 1) - new Date(1970, 0, 1)) / (1000 * 60 * 60 * 24)) + 25569;
+                const monthData = JSON.parse(localStorage.getItem(`manufacturingData_${year}_${month}`)) || initialData.map(row => {
+                    const newRow = { process: row.process, total: 0 };
+                    for (let i = 0; i < daysInMonth; i++) {
+                        newRow[(startSerial + i).toString()] = 0;
+                    }
+                    return newRow;
+                });
+                setData(monthData);
+            };
+
+            const monthOptions = Array.from({ length: 12 }, (_, i) => ({
+                value: i + 1,
+                label: new Date(2025, i, 1).toLocaleString('en-US', { month: 'long' })
+            }));
+            const yearOptions = Array.from({ length: 11 }, (_, i) => 2020 + i);
+
+            if (!user) {
+                return (
+                    <div className="flex items-center justify-center min-h-screen">
+                        <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+                            <div className="flex flex-col items-center mb-6">
+                                <label htmlFor="logo-upload" className="cursor-pointer mb-4">
+                                    <input
+                                        type="file"
+                                        id="logo-upload"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={handleLogoUpload}
+                                    />
+                                    <img src={logo} alt="Logo" className="w-[170px] h-[66px] mb-2" />
+                                    <p className="text-sm text-gray-600">Click to upload logo (170 x 66px)</p>
+                                </label>
+                                <h1 className="text-2xl font-bold text-gray-800">Graviti Pharmaceuticals</h1>
+                                <p className="text-gray-600">Manufacturing Planner</p>
+                            </div>
+                            {!showSignup ? (
+                                <div className="space-y-4">
+                                    <input type="text" id="login-username" placeholder="Username" className="w-full p-2 border rounded-md" />
+                                    <input type="password" id="login-password" placeholder="Password" className="w-full p-2 border rounded-md" />
+                                    <button
+                                        className="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700"
+                                        onClick={() => handleLogin(
+                                            document.getElementById('login-username').value,
+                                            document.getElementById('login-password').value
+                                        )}
+                                    >
+                                        Login
+                                    </button>
+                                    <p className="text-sm text-center">
+                                        Don't have an account? <a href="#" onClick={() => setShowSignup(true)} className="text-blue-600 hover:underline">Sign up here</a>
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <input type="text" id="signup-username" placeholder="Username" className="w-full p-2 border rounded-md" />
+                                    <input type="password" id="signup-password" placeholder="Password" className="w-full p-2 border rounded-md" />
+                                    <input type="password" id="confirm-password" placeholder="Confirm Password" className="w-full p-2 border rounded-md" />
+                                    <p className="text-sm text-gray-600">Password must be at least 8 characters long</p>
+                                    <div className="flex justify-end space-x-2">
+                                        <button className="px-4 py-2 bg-gray-300 rounded-md" onClick={() => setShowSignup(false)}>Cancel</button>
+                                        <button
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                            onClick={() => handleSignup(
+                                                document.getElementById('signup-username').value,
+                                                document.getElementById('signup-password').value,
+                                                document.getElementById('confirm-password').value
+                                            )}
+                                        >
+                                            Create Account
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (mustChangePassword) {
+                return (
+                    <div className="flex items-center justify-center min-h-screen">
+                        <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+                            <h2 className="text-xl font-bold mb-4">Change Password</h2>
+                            <div className="space-y-4">
+                                <input type="password" id="old-password" placeholder="Old Password" className="w-full p-2 border rounded-md" />
+                                <input type="password" id="new-password" placeholder="New Password" className="w-full p-2 border rounded-md" />
+                                <input type="password" id="confirm-new-password" placeholder="Confirm New Password" className="w-full p-2 border rounded-md" />
+                                <p className="text-sm text-gray-600">Password must be at least 8 characters long</p>
+                                <div className="flex justify-end space-x-2">
+                                    <button
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                        onClick={() => handleChangePassword(
+                                            document.getElementById('old-password').value,
+                                            document.getElementById('new-password').value,
+                                            document.getElementById('confirm-new-password').value
+                                        )}
+                                    >
+                                        Change Password
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen">
+                    <nav className="bg-blue-600 text-white p-4 flex justify-between items-center">
+                        <div className="flex items-center space-x-4">
+                            <h1 className="text-xl font-bold">Graviti Pharmaceuticals</h1>
+                            <p className="text-sm">Manufacturing Planner</p>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                            <img src={logo} alt="Logo" className="w-[50px] h-[50px]" />
+                            <span>{currentTime}</span>
+                            <span>Welcome, {user.username} ({user.role})</span>
+                            {user.role === "Super Admin" && (
+                                <button
+                                    className="bg-white text-blue-600 px-3 py-1 rounded-md"
+                                    onClick={() => setShowUserManagement(true)}
+                                >
+                                    Manage Users
+                                </button>
+                            )}
+                            {user.role === "Admin" && (
+                                <button
+                                    className="bg-white text-blue-600 px-3 py-1 rounded-md"
+                                    onClick={() => setShowChangePassword(true)}
+                                >
+                                    Change Password
+                                </button>
+                            )}
+                            <button
+                                className="bg-white text-blue-600 px-3 py-1 rounded-md"
+                                onClick={handleLogout}
+                            >
+                                Logout
+                            </button>
+                        </div>
+                    </nav>
+
+                    {showUserManagement && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                            <div className="bg-white p-6 rounded-lg w-full max-w-md">
+                                <h2 className="text-xl font-bold mb-4">Manage Users</h2>
+                                <table className="w-full mb-4">
+                                    <thead>
+                                        <tr className="bg-gray-200">
+                                            <th className="p-2">Username</th>
+                                            <th className="p-2">Role</th>
+                                            <th className="p-2">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {users.map(u => (
+                                            <tr key={u.username} className="border-b">
+                                                <td className="p-2">{u.username}</td>
+                                                <td className="p-2">
+                                                    <select
+                                                        value={u.role}
+                                                        onChange={(e) => handleRoleChange(u.username, e.target.value)}
+                                                        className="p-1 border rounded-md"
+                                                    >
+                                                        <option value="Super Admin">Super Admin</option>
+                                                        <option value="Admin">Admin</option>
+                                                        <option value="User">User</option>
+                                                    </select>
+                                                </td>
+                                                <td className="p-2">
+                                                    <button
+                                                        className="px-2 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
+                                                        onClick={() => handleDeleteUser(u.username)}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                <button
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                    onClick={() => setShowAddUser(true)}
+                                >
+                                    Add User
+                                </button>
+                                <button
+                                    className="px-4 py-2 bg-gray-300 rounded-md ml-2"
+                                    onClick={() => setShowUserManagement(false)}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {showAddUser && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                            <div className="bg-white p-6 rounded-lg w-full max-w-md">
+                                <h2 className="text-xl font-bold mb-4">Add New User</h2>
+                                <div className="space-y-4">
+                                    <input type="text" id="new-username" placeholder="Username" className="w-full p-2 border rounded-md" />
+                                    <select id="new-role" className="w-full p-2 border rounded-md">
+                                        <option value="User">User</option>
+                                        <option value="Admin">Admin</option>
+                                        <option value="Super Admin">Super Admin</option>
+                                    </select>
+                                    <div className="flex justify-end space-x-2">
+                                        <button
+                                            className="px-4 py-2 bg-gray-300 rounded-md"
+                                            onClick={() => setShowAddUser(false)}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                            onClick={() => {
+                                                const username = document.getElementById('new-username').value;
+                                                const role = document.getElementById('new-role').value;
+                                                handleAddUser(username, role);
+                                                setShowAddUser(false);
+                                            }}
+                                        >
+                                            Add User
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showChangePassword && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                            <div className="bg-white p-6 rounded-lg w-full max-w-md">
+                                <h2 className="text-xl font-bold mb-4">Change Password</h2>
+                                <div className="space-y-4">
+                                    <input type="password" id="old-password" placeholder="Old Password" className="w-full p-2 border rounded-md" />
+                                    <input type="password" id="new-password" placeholder="New Password" className="w-full p-2 border rounded-md" />
+                                    <input type="password" id="confirm-new-password" placeholder="Confirm New Password" className="w-full p-2 border rounded-md" />
+                                    <p className="text-sm text-gray-600">Password must be at least 8 characters long</p>
+                                    <div className="flex justify-end space-x-2">
+                                        <button
+                                            className="px-4 py-2 bg-gray-300 rounded-md"
+                                            onClick={() => setShowChangePassword(false)}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                            onClick={() => handleChangePassword(
+                                                document.getElementById('old-password').value,
+                                                document.getElementById('new-password').value,
+                                                document.getElementById('confirm-new-password').value
+                                            )}
+                                        >
+                                            Change Password
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="container mx-auto p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-2xl font-bold">
+                                {new Date(currentYear, currentMonth - 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })} Manufacturing Plan (Daily)
+                            </h2>
+                            <div className="flex space-x-2">
+                                <select
+                                    value={currentMonth}
+                                    onChange={(e) => handleMonthChange(parseInt(e.target.value), currentYear)}
+                                    className="p-2 border rounded-md"
+                                >
+                                    {monthOptions.map(option => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={currentYear}
+                                    onChange={(e) => handleMonthChange(currentMonth, parseInt(e.target.value))}
+                                    className="p-2 border rounded-md"
+                                >
+                                    {yearOptions.map(year => (
+                                        <option key={year} value={year}>{year}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {(user.role === "Super Admin" || user.role === "Admin") && (
+                            <div className="mb-4 flex space-x-2">
+                                <input
+                                    type="text"
+                                    id="new-equipment"
+                                    placeholder="Enter new equipment name"
+                                    className="p-2 border rounded-md flex-grow"
+                                />
+                                <button
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                    onClick={() => handleAddEquipment(document.getElementById('new-equipment').value)}
+                                >
+                                    Add Equipment
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full bg-white rounded-lg shadow-md table-fixed">
+                                <thead>
+                                    <tr className="bg-blue-600 text-white">
+                                        <th className="p-2 w-48">Process</th>
+                                        {Object.keys(data[0]).filter(key => key !== "process" && key !== "total").map(date => (
+                                            <th key={date} className="p-2 w-24">{formatDate(parseInt(date))}</th>
+                                        ))}
+                                        <th className="p-2 w-24">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {data.map((row, rowIndex) => (
+                                        <tr key={row.process} className="border-b">
+                                            <td className="p-2 flex items-center space-x-2">
+                                                {user.role === "Super Admin" && (
+                                                    <>
+                                                        {editingProcess === rowIndex ? (
+                                                            <div className="flex items-center space-x-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={editValue}
+                                                                    onChange={(e) => setEditValue(e.target.value)}
+                                                                    className="p-1 border rounded-md flex-grow"
+                                                                />
+                                                                <button
+                                                                    className="px-2 py-1 bg-green-600 text-white rounded-md hover:bg-green-700"
+                                                                    onClick={() => handleSaveProcess(rowIndex)}
+                                                                >
+                                                                    Save
+                                                                </button>
+                                                                <button
+                                                                    className="px-2 py-1 bg-gray-300 rounded-md"
+                                                                    onClick={() => setEditingProcess(null)}
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center space-x-2">
+                                                                <span>{row.process}</span>
+                                                                <button
+                                                                    className="px-2 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                                                                    onClick={() => handleEditProcess(rowIndex)}
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <button
+                                                                    className="px-2 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
+                                                                    onClick={() => handleDeleteEquipment(rowIndex)}
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+                                                {(user.role === "Super Admin" || user.role === "Admin") && editingProcess !== rowIndex && (
+                                                    <div className="flex space-x-1">
+                                                        <button
+                                                            className="px-2 py-1 bg-gray-300 rounded-md disabled:opacity-50"
+                                                            onClick={() => handleMoveUp(rowIndex)}
+                                                            disabled={rowIndex === 0}
+                                                        >
+                                                            Up
+                                                        </button>
+                                                        <button
+                                                            className="px-2 py-1 bg-gray-300 rounded-md disabled:opacity-50"
+                                                            onClick={() => handleMoveDown(rowIndex)}
+                                                            disabled={rowIndex === data.length - 1}
+                                                        >
+                                                            Down
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {user.role !== "Super Admin" && editingProcess !== rowIndex && (
+                                                    <span>{row.process}</span>
+                                                )}
+                                            </td>
+                                            {Object.keys(row).filter(key => key !== "process" && key !== "total").map(column => (
+                                                <td key={column} className="p-2">
+                                                    {(user.role === "Super Admin" || user.role === "Admin") ? (
+                                                        <input
+                                                            type="text"
+                                                            value={row[column]}
+                                                            onChange={(e) => handleDataEdit(rowIndex, column, e.target.value)}
+                                                            className="w-full p-1 border rounded-md"
+                                                        />
+                                                    ) : (
+                                                        row[column]
+                                                    )}
+                                                </td>
+                                            ))}
+                                            <td className="p-2">{row.total}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="mt-8">
+                            <h3 className="text-xl font-bold mb-4">Manufacturing Plan Overview (Daily)</h3>
+                            <Recharts.ResponsiveContainer width="100%" height={400}>
+                                <Recharts.BarChart data={data}>
+                                    <Recharts.CartesianGrid strokeDasharray="3 3" />
+                                    <Recharts.XAxis dataKey="process" />
+                                    <Recharts.YAxis />
+                                    <Recharts.Tooltip />
+                                    <Recharts.Legend />
+                                    {Object.keys(data[0]).filter(key => key !== "process" && key !== "total").map((date, index) => (
+                                        <Recharts.Bar key={date} dataKey={date} fill={`#${(index * 123457) % 16777215}`.padStart(6, '0')} name={formatDate(parseInt(date))} />
+                                    ))}
+                                </Recharts.BarChart>
+                            </Recharts.ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
